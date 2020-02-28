@@ -1,0 +1,8 @@
+.Rproj.user/
+.secrets/
+data/
+ident_get_ggdrive_data.R
+app_frac_num_sant.Rproj
+deploy.R
+manifest.txt
+rsconnect/
