@@ -7,3 +7,4 @@ deploy.R
 manifest.txt
 rsconnect/
 readme.html
+.Rhistory

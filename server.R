@@ -1,32 +1,47 @@
 server <- function(input, output, session) {
   
-  
+  observeEvent(input$selected_tab,{
+    print('tab selectionnée')
+    print(input$selected_tab)
+  })
   
   output$mymap <- renderLeaflet({
-    bounds = st_bbox(dep)%>%unname()
     
-    m = leaflet()%>%
-      addTiles()%>%
-      fitBounds(lng1 = bounds[1],lat1 = bounds[2],
-                lng2 = bounds[3],lat2 = bounds[4])%>%
-      leafem::addMouseCoordinates()%>%
-      addPolygons(data=dep,fillOpacity = 0,fill=T,layerId = ~CC_2,label = ~NAME_2)
-    
+    m
     
     
   })
   
   my_group = reactiveVal()
   
+  output$choix_inds = renderUI({
+    req(input$choix_dep)
+    if(input$selected_tab=="tradeoff"){
+      tagList(
+        selectizeInput("Indicateur d'offre numérique",inputId = "num_ind",
+                       setNames(c('tx_4G_max','tx_3G_max'),c('Meilleure couverture 4G','Meilleure couverture 3G'))),
+        selectizeInput("Indicateur d'offre de soins",inputId = "sant_ind",
+                       setNames(c('apl_mg2018','apl_inf2016','apl_sf2016','apl_mk2016'),
+                                c("APL Médecins Généralistes","APL Infirmiers","APL Sages-femmes","APL Masseurs Kinésithérapeutes"))))
+    }else NULL
+  })
+  output$explications = renderUI({
+    req(input$choix_dep)
+    if(input$selected_tab=="carto"){
+      box(background = "navy",width="12",explication_tradeoff,collapsible = T)
+    } else NULL
+  })
   output$slider_lambda = renderUI({
     req(input$choix_dep)
-    lambdas = sort(unique(diffs_per_dep[dep%in%input$choix_dep&diff>0]$lambda))
-    shinyWidgets::sliderTextInput("num_vs_sante", choices = lambdas,
-                                  width = '250px',label = div(style='width:210px;',
-                                                              div(style='float:left;', 'numÃ©rique'),
-                                                              div(style='float:right;', 'santÃ©')),
-                                  animate = animationOptions(interval =1000, loop = FALSE),
-                                  selected=sample(lambdas,1))
+    if(input$selected_tab=="carto"){
+      lambdas = sort(unique(diffs_per_dep[dep%in%input$choix_dep&diff>0]$lambda))
+      shinyWidgets::sliderTextInput("num_vs_sante", choices = lambdas,
+                                    width = '250px',label = div(style='width:210px;',
+                                                                div(style='float:left;', 'numérique'),
+                                                                div(style='float:right;', 'santé')),
+                                    animate = animationOptions(interval =1000, loop = FALSE),
+                                    selected=sample(lambdas,1))
+    } else NULL
   })
   
   config_plot = reactiveVal(NULL)
@@ -92,78 +107,95 @@ server <- function(input, output, session) {
   
   
   
-  output$distPlot <- renderPlot({
+  output$distPlot <- renderPlotly({
+    req(input$choix_dep)
+    req(input$sant_ind)
+    req(input$num_ind)
+    print('make scatter plot')
     val = input$choix_dep
-    ggplot(data = subset(communes, communes$dep == val, select = c(tx_4G_min, apl_mg2018)),
-           aes(x = tx_4G_min,
-               y = apl_mg2018)) + 
+    # browser()
+    data = communes[dep == val, c(input$num_ind, input$sant_ind,"lib_com"),with=F]
+    setnames(data,c(input$num_ind, input$sant_ind),c("num_ind","sant_ind"))
+    seuils = seuils_sant[[input$sant_ind]]
+    seuil_num = seuils_num[input$num_ind]
+    num_txt = c('tx_3G_max'="3G","tx_4G_max"="4G")
+    sant_text = c('apl_mg2018'='les médecins généralistes en 2018',
+                  'apl_inf2016'='les infirmiers en 2016',
+                  'apl_sf2016'='les sages-femmes en 2016',
+                  'apl_mk2016'='les masseurs kinésithérapeutes en 2016')
+    top_value = max(data$sant_ind)
+    ajustement_y = top_value/8
+    print(ajustement_y)
+    
+    distplot <- ggplot(data = data,
+                aes(x = num_ind,
+                    y = sant_ind,label=lib_com)) + 
       geom_point(stat = "identity") + 
-      geom_vline(xintercept = 0.9) + 
-      geom_hline(yintercept = 2.5) + 
-      geom_hline(yintercept = 4) + 
+      geom_vline(xintercept = seuil_num) + 
+      geom_hline(yintercept = seuils[1]) + 
+      geom_hline(yintercept = seuils[2]) + 
       annotate(geom = "text", x = 0, y = 0, hjust = 0,
-               label = "Couverture mÃ©dicale faible",
+               label = "Couverture médicale faible",
                color = rgb(192/255, 0, 0)) + 
-      annotate(geom = "text", x = 0, y = -0.5, hjust = 0,
-               label = "Couverture numÃ©rique faible",
+      annotate(geom = "text", x = 0, y = -ajustement_y, hjust = 0,
+               label = "Couverture numérique faible",
                color = rgb(192/255, 0, 0)) + 
       annotate(geom = "text", x = 1.1, y = 0, hjust = 0,
-               label = "Couverture mÃ©dicale faible",
+               label = "Couverture médicale faible",
                color = rgb(192/255, 0, 0)) + 
-      annotate(geom = "text", x = 1.1, y = -0.5, hjust = 0,
-               label = "Couverture numÃ©rique forte",
+      annotate(geom = "text", x = 1.1, y = -ajustement_y, hjust = 0,
+               label = "Couverture numérique forte",
                color = rgb(112/255, 173/255, 71/255)) +
-      annotate(geom = "text", x = 0, y = max(subset(communes, communes$dep == val, select = c(tx_4G_min, apl_mg2018))$apl_mg2018), hjust = 0,
-               label = "Couverture numÃ©rique faible",
+      annotate(geom = "text", x = 0, y = top_value, hjust = 0,
+               label = "Couverture numérique faible",
                color = rgb(192/255, 0, 0)) + 
-      annotate(geom = "text", x = 0, y = max(subset(communes, communes$dep == val, select = c(tx_4G_min, apl_mg2018))$apl_mg2018) + 0.5, hjust = 0,
-               label = "Couverture mÃ©dicale forte",
+      annotate(geom = "text", x = 0, y = top_value + ajustement_y, hjust = 0,
+               label = "Couverture médicale forte",
                color = rgb(112/255, 173/255, 71/255))+
-      annotate(geom = "text", x = 1.1, y = max(subset(communes, communes$dep == val, select = c(tx_4G_min, apl_mg2018))$apl_mg2018), hjust = 0,
-               label = "Couverture numÃ©rique forte",
+      annotate(geom = "text", x = 1.1, y = top_value, hjust = 0,
+               label = "Couverture numérique forte",
                color = rgb(112/255, 173/255, 71/255)) +
-      annotate(geom = "text", x = 1.1, y = max(subset(communes, communes$dep == val, select = c(tx_4G_min, apl_mg2018))$apl_mg2018) + 0.5, hjust = 0,
-               label = "Couverture mÃ©dicale forte",
+      annotate(geom = "text", x = 1.1, y = top_value + ajustement_y, hjust = 0,
+               label = "Couverture médicale forte",
                color = rgb(112/255, 173/255, 71/255)) +
-      xlim(0, 1.6) + 
-      xlab("Couverture numÃ©rique : part minimale de la commune couverte en 4G") +
-      ylab("Couverture mÃ©dicale :\nAPL pour les mÃ©decins gÃ©nÃ©ralistes (2018)") +
-      ggtitle(paste0("RÃ©partition des communes du dÃ©partement ", val, "\nselon leurs couvertures numÃ©rique et mÃ©dicale")) +
+      xlim(-.1, 1.6) + 
+      ylim(-2*ajustement_y,top_value+2*ajustement_y)+
+      xlab(paste0("Couverture numérique : meilleure couverture de la commune en ",num_txt[input$num_ind])) +
+      ylab(paste0("Couverture médicale :\nAPL pour ",sant_text[input$sant_ind])) +
+      ggtitle(paste0("Répartition des communes du département ", val, "\nselon leurs couvertures numérique et médicale")) +
       theme_grey()+
       theme(plot.title = element_text(colour = rgb(0, 0, 128/255), 
                                       hjust = 0.5,
-                                      face = "bold")) 
+                                      face = "bold"))
     
-    
+    ggplotly(distplot)
     
   })
   
-  output$plot2 <- renderPlot({
+  output$plot2 <- renderPlotly({
+    req(input$choix_dep)
+    req(input$sant_ind)
+    req(input$num_ind)
+    # browser()
+    print('make cols plot')
     val = input$choix_dep
-    data = subset(communes, communes$dep == val, select = c(tx_4G_min,
-                                                            pop2016, apl_mg2018))
-    data$groupe <- NA
-    data$groupe[data$apl_mg2018 <= 2.5 & data$tx_4G_min <= 0.9] <- "MÃ©dicale (-)\nNumÃ©rique (-)"
-    data$groupe[data$apl_mg2018 > 4 & data$tx_4G_min <= 0.9] <- "MÃ©dicale (+)\nNumÃ©rique (-)"
-    data$groupe[is.na(data$groupe) & data$tx_4G_min <= 0.9] <- "MÃ©dicale (=)\nNumÃ©rique (-)"
-    data$groupe[data$apl_mg2018 <= 2.5 & data$tx_4G_min > 0.9] <- "MÃ©dicale (-)\nNumÃ©rique (+)"
-    data$groupe[data$apl_mg2018 > 4 & data$tx_4G_min > 0.9] <- "MÃ©dicale (+)\nNumÃ©rique (+)"
-    data$groupe[is.na(data$groupe) & data$tx_4G_min > 0.9] <- "MÃ©dicale (=)\nNumÃ©rique (+)"
-    data$un <- 1
-    agg <- aggregate(subset(data, select = c(un, pop2016)), by = list(data$groupe), FUN = sum)  
-    agg$pop2016 <- agg$pop2016 / 1000
-    names(agg) <- c("Groupe", "Nombre de communes", "Nombre d'habitants (milliers)")
-    agg.melt <-  melt(agg, id.vars = "Groupe")
-    agg.melt$Groupe <- factor(agg.melt$Groupe,
-                              levels = c("MÃ©dicale (-)\nNumÃ©rique (-)",
-                                         "MÃ©dicale (-)\nNumÃ©rique (+)",
-                                         "MÃ©dicale (=)\nNumÃ©rique (-)",
-                                         "MÃ©dicale (=)\nNumÃ©rique (+)",
-                                         "MÃ©dicale (+)\nNumÃ©rique (-)",
-                                         "MÃ©dicale (+)\nNumÃ©rique (+)"))
-    ggplot(data = agg.melt,
-           aes(x = Groupe, y = value, fill = variable)) + 
-      geom_bar(stat = "identity", position = position_dodge()) +
+
+    seuils = seuils_sant[[input$sant_ind]]
+    seuil_num = seuils_num[input$num_ind]
+    
+    data = communes[dep==input$choix_dep,c(input$num_ind,'pop2016',input$sant_ind),with=F]
+    setnames(data,c(input$num_ind,input$sant_ind),c("num_ind","sant_ind"))
+    data[sant_ind<=seuils[2],med_mood:="Médicale (=)"]
+    data[sant_ind<=seuils[1],med_mood:="Médicale (-)"]
+    data[sant_ind>seuils[2],med_mood:="Médicale (+)"]
+    data[,med_mood:=factor(med_mood,levels=c("Médicale (-)","Médicale (=)","Médicale (+)"))]
+    data[num_ind<=seuil_num,num_mood:="Numérique (-)"]
+    data[num_ind>seuil_num,num_mood:="Numérique (+)"]
+    data[,num_mood:=factor(num_mood,levels=c("Numérique (-)","Numérique (+)"))]
+    data = data[,.('Nombre de communes' = .N,"Nombre d'habitants (milliers)" = round(sum(pop2016)/1000)),by=c('med_mood','num_mood')]
+    facetted_cols <- ggplot(data=melt(data,id.vars = c('med_mood','num_mood')))+
+      geom_col(aes(x=med_mood,y=value,fill=variable),position = position_dodge())+
+      facet_grid(.~num_mood)+
       theme(legend.position = "bottom",
             legend.title = element_blank(),
             axis.title = element_blank(),
@@ -171,7 +203,9 @@ server <- function(input, output, session) {
                                       hjust = 0.5,
                                       face = "bold")) +
       scale_fill_manual(values = c(rgb(0, 0, 128/255), rgb(1, 102/255, 0))) + 
-      ggtitle(paste0("Couvertures numÃ©rique et mÃ©dicale du dÃ©partement ", input$choix_dep))
+      ggtitle(paste0("Couvertures en numérique et santé du département ", input$choix_dep))
+    
+    ggplotly(facetted_cols)
     
     
     
