@@ -7,7 +7,8 @@ library(colourvalues)
 library(ggplot2)
 library(plotly)
 
-source('ident_get_ggdrive_data.R')
+# source('ident_get_ggdrive_data.R')
+source('ident_get_dropbox.R')
 
 
 load("data/communes_scored.RData")

@@ -48,6 +48,7 @@ server <- function(input, output, session) {
   current_dep = reactiveVal("00")
   
   
+  
   observeEvent(input$num_vs_sante,{
     req(input$num_vs_sante)
     proxy = leafletProxy("mymap")
@@ -61,33 +62,55 @@ server <- function(input, output, session) {
     # cols = colour_values_rgb(sub$couvertures_tranches,
     #                          palette = "green2red",include_alpha = FALSE) / 255
     bounds = st_bbox(sub)%>%unname()
-    key = keygen()
-    
-    if (!is.null(config_plot())){
-      modified = merge(sub,config_plot(),by="code")
-      modified = modified[modified$couvertures_tranches!=modified$last_tranches,]
-      proxy %>%
-        addPolygons(data = modified,color = "black",fillOpacity = 0,group=key)
-    }
-    
-    proxy %>%
-      addPolygons(data=sub, fillColor = ~pal(couvertures_tranches),label=~paste(nom,'- tranche :',couvertures_tranches+1),
-                  color=~pal(couvertures_tranches),opacity = 0.1,fillOpacity = .5,
-                  # popup = ~nom,
-                  group=key)%>%
-      leaflet::clearGroup(my_group())
-    
-    setnames(sub,'couvertures_tranches','last_tranches')
-    config_plot(sub[,c("code","last_tranches")]%>%st_set_geometry(NULL))
-    my_group(key)
     
     if (current_dep() != input$choix_dep){
+      key = keygen()
+      
       bounds = st_bbox(sub)%>%unname()
       proxy %>%
         fitBounds(lng1 = bounds[1],lat1 = bounds[2],
                   lng2 = bounds[3],lat2 = bounds[4])
       current_dep(input$choix_dep)
+      proxy %>%
+        leaflet::clearGroup("contour")%>%
+        leaflet::clearGroup(my_group())%>%
+        addPolygons(data=sub, fillColor = ~pal(couvertures_tranches),label=~paste(nom,'- tranche :',couvertures_tranches+1),
+                    color=~pal(couvertures_tranches),opacity = 0,fillOpacity = .5,layerId = ~code,
+                    # popup = ~nom,
+                    group=key)
+      config_plot(NULL)
+      my_group(key)
+      
     }
+    
+    
+    if (!is.null(config_plot())){
+      
+      modified = merge(sub,config_plot(),by="code")
+      modified = modified[modified$couvertures_tranches!=modified$last_tranches,]
+      proxy %>%
+        leaflet::clearGroup("contour")%>%
+        addPolygons(data = modified,color = "black",fillOpacity = 0,group="contour")%>%
+        removeShape(layerId = modified$code) %>%
+        addPolygons(data=modified, fillColor = ~pal(couvertures_tranches),label=~paste(nom,'- tranche :',couvertures_tranches+1),
+                    color=~pal(couvertures_tranches),opacity = 0,fillOpacity = .5,layerId = ~code,
+                    # popup = ~nom,
+                    group=my_group())
+    }
+    # browser()
+    # if (is.null(config_plot())){
+    # proxy %>%
+    #   addPolygons(data=sub, fillColor = ~pal(couvertures_tranches),label=~paste(nom,'- tranche :',couvertures_tranches+1),
+    #               color=~pal(couvertures_tranches),opacity = 0,fillOpacity = .5,layerId = ~code,
+    #               # popup = ~nom,
+    #               group=key)
+    # }
+      # leaflet::clearGroup(my_group())
+    
+    setnames(sub,'couvertures_tranches','last_tranches')
+    config_plot(sub[,c("code","last_tranches")]%>%st_set_geometry(NULL))
+    
+    
     
     
   })
